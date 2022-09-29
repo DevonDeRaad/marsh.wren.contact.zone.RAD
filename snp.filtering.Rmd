@@ -1,0 +1,144 @@
+---
+title: "Marsh wren SNP filtering"
+author: "Devon DeRaad"
+date: '2022-09-29'
+output: html_document
+---
+
+# SNPfiltR quality filtering pipeline
+### Read in your unfiltered vcf file
+```{r setup, echo = T, results = 'hide'}
+library(vcfR)
+library(ggplot2)
+library(gridExtra)
+library(ggridges)
+library(adegenet)
+library(SNPfiltR)
+library(dplyr)
+
+#read in vcf as vcfR
+vcfR <- read.vcfR("~/Desktop/marsh.wren.rad/n4.vcf")
+### check the metadata present in your vcf
+vcfR
+vcfR@fix[1:10,1:8]
+vcfR@gt[1:10,1:2]
+
+#remove extraneous samples
+vcfR<-vcfR[,c(1:79,81:133,143,146:154)]
+vcfR<-min_mac(vcfR, min.mac = 1) #remove invariant sites
+vcfR
+colnames(vcfR@gt)
+
+#read in sample metadata
+samps<-read.csv("~/Desktop/marsh.wren.rad/marsh.wren.rad.sampling.csv")
+#retain samples that were sequenced successfully
+samps<-samps[samps$Tissue.num %in% colnames(vcfR@gt),]
+#reorder sampling file to match order of samples in vcf
+samps<-samps[match(colnames(vcfR@gt)[-1], samps$Tissue.num),]
+samps$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
+
+#generate popmap file. Two column popmap with the same format as stacks, and the columns must be named 'id' and 'pop'
+popmap<-data.frame(id=samps$Tissue.num,
+                   pop=samps$Population)
+table(popmap$pop)
+```
+
+## step 1: Implement quality filters that don't involve missing data. This is because removing low data samples will alter percentage/quantile based missing data cutoffs, so we wait to implement those until after deciding on our final set of samples for downstream analysis
+```{r}
+#hard filter to minimum depth of 3, and minimum genotype quality of 30
+vcfR<-hard_filter(vcfR, depth = 3, gq = 30)
+```
+
+### Use this function to filter for allele balance
+### from Puritz SNP filtering tutorial "Allele balance: a number between 0 and 1 representing the ratio of reads showing the reference allele to all reads, considering only reads from individuals called as heterozygous, we expect that the allele balance in our data (for real loci) should be close to 0.5"
+```{r}
+#execute allele balance filter
+vcfR<-filter_allele_balance(vcfR)
+```
+
+### max depth filter (super high depth loci are likely multiple loci stuck together into a single paralogous locus).
+```{r}
+#visualize and pick appropriate max depth cutoff
+max_depth(vcfR)
+
+#filter vcf by the max depth cutoff you chose
+vcfR<-max_depth(vcfR, maxdepth = 200)
+```
+
+```{r}
+#remove SNPs that have become invariant
+vcfR<-min_mac(vcfR, min.mac = 1)
+#check vcfR to see how many SNPs we have left
+vcfR
+```
+
+## Step 2: visualize missing data by sample. Check out the visualizations and make decision on which samples to keep for downstream analysis.
+```{r}
+#run function to visualize samples
+miss<-missing_by_sample(vcfR=vcfR)
+missing_by_snp(vcfR=vcfR)
+
+#looks like there are 4 more samples that I would remove for low data
+#run function to drop samples above the threshold we want from the vcf
+vcfR<-missing_by_sample(vcfR=vcfR, cutoff = .8)
+
+#remove SNPs that became invariant
+vcfR<-min_mac(vcfR, min.mac = 1)
+
+#subset popmap to only include retained individuals
+popmap<-popmap[popmap$id %in% colnames(vcfR@gt),]
+
+#alternatively, you can drop individuals from vcfR manually using the following syntax, if a strict cutoff doesn't work for your dataset
+#vcfR@gt <- vcfR@gt[,colnames(vcfR@gt) != "KVO248_H_dinops_Isabel"]
+```
+
+## Step 3: Set the arbitrary missing data cutoff
+### We can visualize the effect that typical missing data cutoffs will have on both the number of SNPs retained and the total missing data in our entire dataset.
+### We want to choose a cutoff that minimizes the overall missing data in the dataset, while maximizing the total number of loci retained.
+```{r}
+#visualize missing data by SNP and the effect of various cutoffs on the missingness of each sample
+missing_by_snp(vcfR)
+#choose a value that retains an acceptable amount of missing data in each sample, and maximizes SNPs retained while minimizing overall missing data, and filter vcf
+vcfR<-missing_by_snp(vcfR, cutoff = .85)
+```
+
+## check the effect of mac threshold on clustering
+```{r}
+#drop invariant sites plus singletons for plotting
+vcf.filt<-min_mac(vcfR, min.mac = 2)
+#compare SNP counts
+vcfR
+vcf.filt
+#assess the effect of MAC cutoff on clustering inferences
+assess_missing_data_pca(vcfR, popmap = popmap, clustering = FALSE)
+assess_missing_data_pca(vcf.filt, popmap = popmap, clustering = FALSE)
+
+#mac filter seems to make no difference, so we will ignore it for now.
+```
+
+### plot quality heatmaps
+```{r}
+#plot depth per snp and per sample
+dp <- extract.gt(vcf.filt, element = "DP", as.numeric=TRUE)
+heatmap.bp(dp, rlabels = FALSE)
+
+#plot genotype quality per snp and per sample
+gq <- extract.gt(vcf.filt, element = "GQ", as.numeric=TRUE)
+heatmap.bp(gq, rlabels = FALSE)
+```
+
+### We can filter for linkage (one SNP per locus) and use the convenient function 'write.vcf' from vcfR to export our filtered vcf file for downstream analyses
+```{r}
+#final filetered vcf stats
+vcfR
+#write out the filtered vcf file
+#write.vcf(vcfR, file = "~/Desktop/marsh.wren.rad/filtered.vcf.gz")
+
+#filter to one SNP per locus to get an unlinked dataset
+unlinked.vcf<-distance_thin(vcfR, min.distance = 10000)
+#final filetered, unlinked vcf stats
+unlinked.vcf
+
+#write out vcf file of unlinked SNPs
+#write.vcf(unlinked.vcf, file = "~/Desktop/marsh.wren.rad/unlinked.filtered.vcf.gz")
+```

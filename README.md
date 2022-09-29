@@ -3,7 +3,7 @@ Repository for analysis of RADseq data from a transect of male Marsh Wrens
 
 *   Find the lab protocols used to generate genomic data here:
 
-    > <https://github.com/DevonDeRaad/bats/tree/master/lab.protocols>
+    > <https://github.com/DevonDeRaad/marsh.wren.contact.zone.RAD/tree/master/lab.protocols>
     
 *   See the process for optimizing [Stacks](https://catchenlab.life.illinois.edu/stacks/) parameters, using the [RADstackshelpR](https://github.com/DevonDeRaad/RADstackshelpR) pipeline:
 

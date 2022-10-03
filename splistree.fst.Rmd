@@ -1,0 +1,71 @@
+---
+title: "splitstree and Fst"
+author: "Devon DeRaad"
+date: '2022-10-03'
+output: html_document
+---
+
+### Setup
+```{r, results=FALSE}
+#load packages
+library(vcfR)
+library(SNPfiltR)
+library(RColorBrewer)
+library(ggplot2)
+library(StAMPP)
+library(adegenet)
+
+#read in vcf as vcfR
+vcfR <- read.vcfR("~/Desktop/marsh.wren.rad/filtered.vcf.gz")
+
+samps<-read.csv("~/Desktop/marsh.wren.rad/marsh.wren.rad.sampling.csv")
+#retain samples that were sequenced successfully
+samps<-samps[samps$Tissue.num %in% colnames(vcfR@gt),]
+#reorder sampling file to match order of samples in vcf
+samps<-samps[match(colnames(vcfR@gt)[-1], samps$Tissue.num),]
+samps$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
+
+table(samps$Population)
+```
+
+### Make splitstree
+```{r}
+#convert vcfR to genlight
+gen<-vcfR2genlight(vcfR)
+#see sample names
+gen@ind.names
+gen@ind.names<-paste0(gen@ind.names,samps$Population)
+#assign inds to pops
+pop(gen)<-gen@ind.names
+#calculate pairwise nei's D matrix to use as splitstree input
+sample.div <- stamppNeisD(gen, pop = FALSE)
+
+#write matrix to disk and open in splitstree
+stamppPhylip(distance.mat=sample.div, file="~/Desktop/marsh.wren.rad/filtered.splits.txt")
+
+#view tree
+knitr::include_graphics("/Users/devder/Desktop/marsh.wren.rad/splitstree.png")
+```
+
+### calculate pairwise FST between the two pure ends
+```{r}
+#define populations
+gen@pop<-as.factor(samps$Population)
+#calculate pairwise FST
+di.heat<-stamppFst(gen)
+#extract values
+m<-di.heat$Fsts
+#fill in upper triangle of matrix
+m[upper.tri(m)] <- t(m)[upper.tri(m)]
+#melt for plotting
+heat <- reshape::melt(m)
+#plot with labels
+ggplot(data = heat, aes(x=X1, y=X2, fill=value)) + 
+  geom_tile()+
+  geom_text(data=heat,aes(label=round(value, 2)))+
+  theme_minimal()+
+  scale_fill_gradient2(low = "white", high = "red", space = "Lab", name="Fst") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(angle = 45, hjust = 1))
+```
+

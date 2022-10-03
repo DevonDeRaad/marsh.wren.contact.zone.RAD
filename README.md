@@ -5,6 +5,10 @@ Repository for analysis of RADseq data from a transect of male Marsh Wrens
 
     > <https://github.com/DevonDeRaad/marsh.wren.contact.zone.RAD/tree/master/lab.protocols>
     
+*   See the quality control process using the R package [fastqcR](https://github.com/kassambara/fastqcr) here:
+
+    > <https://devonderaad.github.io/marsh.wren.contact.zone.RAD/qc/qc.html>
+
 *   See the process for optimizing [Stacks](https://catchenlab.life.illinois.edu/stacks/) parameters, using the [RADstackshelpR](https://github.com/DevonDeRaad/RADstackshelpR) pipeline:
 
     > <https://devonderaad.github.io/marsh.wren.contact.zone.RAD/denovo.optimization/optimize.denovo.assembly.html>

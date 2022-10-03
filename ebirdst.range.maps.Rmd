@@ -1,0 +1,235 @@
+---
+title: "ebirdst range maps"
+author: "Devon DeRaad"
+date: '2022-10-03'
+output: html_document
+---
+
+### Setup
+```{r, results=FALSE}
+#load packages
+library(vcfR)
+library(SNPfiltR)
+library(RColorBrewer)
+library(ebirdst)
+library(raster)
+library(sf)
+library(exactextractr)
+library(dplyr)
+library(tidyr)
+library(rnaturalearth)
+library(ggplot2)
+extract <- raster::extract
+#devtools::install_github("ropensci/rnaturalearthhires")
+
+#read in vcf as vcfR
+vcfR <- read.vcfR("~/Desktop/marsh.wren.rad/filtered.vcf.gz")
+
+samps<-read.csv("~/Desktop/marsh.wren.rad/marsh.wren.rad.sampling.csv")
+#retain samples that were sequenced successfully
+samps<-samps[samps$Tissue.num %in% colnames(vcfR@gt),]
+#reorder sampling file to match order of samples in vcf
+samps<-samps[match(colnames(vcfR@gt)[-1], samps$Tissue.num),]
+samps$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
+
+table(samps$Population)
+```
+
+### Download data
+```{r}
+#download the Marsh Wren data
+#path <- ebirdst_download("Marsh Wren")
+#above only needs to be run once
+#if the data package has already been downloaded just do this:
+path <- get_species_path("Marsh Wren")
+```
+
+#pull in seasonal abundance data and check it out
+```{r}
+# load seasonal mean relative abundance at low res
+abd_seasonal <- load_raster(path, 
+                            product = "abundance", 
+                            period = "seasonal",
+                            metric = "mean",
+                            resolution = "mr")
+
+# get the seasons corresponding to each layer
+names(abd_seasonal)
+
+#check out details of the dataset
+ebirdst_runs %>% 
+  # note that the example data are for yellow-bellied sapsucker
+  filter(common_name == "Marsh Wren") %>% 
+  glimpse()
+
+#extract just the breeding season relative abundance
+abd_breeding <- abd_seasonal[["breeding"]]
+
+# load the mapping parameters
+fac_parameters <- load_fac_map_parameters(path)
+crs <- fac_parameters$custom_projection
+
+# transform to the custom projection using nearest neighbor resampling
+abd_projected <- projectRaster(abd_breeding, crs = crs, method = "ngb")
+
+# map the cropped and projected data
+plot(abd_projected, axes = FALSE)
+
+# quantiles of non-zero values
+v <- values(abd_projected)
+v <- v[!is.na(v) & v > 0]
+bins <- quantile(v, seq(0, 1, by = 0.1))
+# add a bin for 0
+bins <- c(0, bins)
+
+# status and trends palette
+pal <- abundance_palette(length(bins) - 1)
+# add a color for zero
+pal <- c("#e6e6e6", pal)
+
+# map using the quantile bins
+plot(abd_projected, breaks = bins, col = pal, axes = FALSE)
+```
+
+### Plot abundance data
+
+```{r}
+# natural earth boundaries
+countries <- ne_countries(returnclass = "sf") %>% 
+  st_geometry() %>% 
+  st_transform(crs)
+states <- ne_states(iso_a2 = "US", returnclass = "sf") %>% 
+  st_geometry() %>% 
+  st_transform(crs)
+ca_states <- ne_states(iso_a2 = "CA", returnclass = "sf") %>% 
+  st_geometry() %>% 
+  st_transform(crs)
+
+# boundary polygon for US
+US <- ne_states(iso_a2 = "US", returnclass = "sf") %>% 
+  filter(postal != "HI") %>% 
+  # project to same coordinate reference system as the raster data
+  st_transform(st_crs(abd_seasonal))
+
+# define the map extent with the michigan polygon
+US_ext <- US %>% 
+  st_geometry() %>% 
+  st_transform(crs)
+
+#start with extent
+plot(US_ext, col="grey80", border = alpha("black", .2))
+#plot basemap
+plot(countries, col = "grey80", border = alpha("black", .2), add = TRUE)
+# add data
+plot(abd_projected, 
+     breaks = bins, col = pal, 
+     axes = FALSE, legend = FALSE, add = TRUE)
+# add boundaries
+#plot(countries, col = NA, border = alpha("black", .2), add = TRUE)
+plot(states, col = NA, border = alpha("black", .2), add = TRUE)
+plot(ca_states, col = NA, border = alpha("black", .2), add = TRUE)
+
+# add legend separately
+# label the bottom, middle, and top
+labels <- quantile(bins, c(0, 0.5, 1))
+plot(abd_projected, add=FALSE, zlim = c(0, 1), legend.only = TRUE, 
+     col = pal, breaks = seq(0, 1, length.out = length(bins)), 
+     legend.shrink = 0.5, legend.width = 1,
+     axis.args = list(at = seq(0, 1, length.out = length(labels)), 
+                      labels = signif(labels, 2),
+                      col.axis = "black", fg = NA,
+                      cex.axis = 1, lwd.ticks = 0,
+                      line = -0.5))
+
+###save plot
+## Open a pdf file
+#pdf("~/Desktop/marsh.wren.rad/breeding.density.map.nolegend.pdf", width=5, height=7) 
+##start with extent
+#plot(US_ext, col = "grey80", border = alpha("black", .2))
+##plot basemap
+#plot(countries, col = "grey80", border = alpha("black", .2), add = TRUE)
+## add data
+#plot(abd_projected, 
+#     breaks = bins, col = pal, 
+#     axes = FALSE, legend = FALSE, add = TRUE)
+## add boundaries
+##plot(countries, col = NA, border = alpha("black", .2), add = TRUE)
+#plot(states, col = NA, border = alpha("black", .2), add = TRUE)
+#plot(ca_states, col = NA, border = alpha("black", .2), add = TRUE)
+#dev.off() 
+```
+
+### Now plot just a rangemap
+```{r}
+#if you just want a range outline
+ranges <- load_ranges(path, resolution = "mr")
+class(ranges)
+# subset to just the breeding season range using dplyr
+range_breeding <- filter(ranges, season == "breeding")
+#transform to match projection of the previous rasters
+br <- range_breeding %>% 
+  st_geometry() %>% 
+  st_transform(crs)
+
+#start with extent
+plot(US_ext)
+#plot basemap
+plot(countries, col = "grey90", border = "#888888", add = TRUE, graticule=TRUE, axes=TRUE)
+# add boundaries
+plot(countries, col = NA, border = "#888888", add = TRUE)
+plot(states, col = NA, border = "#888888", add = TRUE)
+plot(ca_states, col = NA, border = "#888888", add = TRUE)
+#add rangemap
+plot(br, border=alpha("black", .8), col=alpha("black", .2), add=TRUE)
+```
+
+### Add your sampling points and save plot
+```{r}
+###add your sampling points to plot###
+brewer.pal(n=6, "BrBG") #get your palette
+#subsample only unique lat longs
+sam<-samps[rownames(unique(samps[,11:12])),]
+#reorder for plotting
+sam<-sam[c(1,5,2,4,3,6,7,8),]
+#transform sampling lat longs into an sf object with coordinate reference system (CRS) = WGS 84
+DT_sf<- st_as_sf(sam, coords = c("Longitude", "Latitude"), crs = "WGS84", agr = "constant")
+#transform into the CRS used to map the species range
+DT_sf<- DT_sf %>% 
+  st_geometry() %>% 
+  st_transform(crs)
+
+#start with extent
+plot(US_ext, border = alpha("black", .2))
+#plot basemap
+plot(countries, col = "grey90", border = "#888888", add = TRUE, graticule=TRUE, axes=TRUE)
+# add boundaries
+plot(countries, col = NA, border = "#888888", add = TRUE)
+plot(states, col = NA, border = "#888888", add = TRUE)
+plot(ca_states, col = NA, border = "#888888", add = TRUE)
+#add rangemap
+plot(br, border=alpha("black", .8), col=alpha("black", .2), add=TRUE)
+#add sampling points
+plot(DT_sf, pch = 19, cex = 1, border=white,
+     col=c("#8C510A","#D8B365","#F6E8C3","#C7EAE5","#5AB4AC","#01665E","#01665E","#01665E"), add=TRUE)
+
+###save plot
+## Open a pdf file
+#pdf("~/Desktop/marsh.wren.rad/sampling.distribution.map.pdf", width=5, height=7) 
+## 2. Create a plot
+##start with extent
+#plot(US_ext, border = alpha("black", .2))
+##plot basemap
+#plot(countries, col = "grey90", border = "#888888", add = TRUE, graticule=TRUE, axes=TRUE)
+## add boundaries
+#plot(countries, col = NA, border = "#888888", add = TRUE)
+#plot(states, col = NA, border = "#888888", add = TRUE)
+#plot(ca_states, col = NA, border = "#888888", add = TRUE)
+##add rangemap
+#plot(br, border=alpha("black", .8), col=alpha("black", .2), add=TRUE)
+##add sampling points
+#plot(DT_sf, pch = 19, cex = 1, border=white,
+#     col=c("#8C510A","#D8B365","#F6E8C3","#C7EAE5","#5AB4AC","#01665E","#01665E","#01665E"), #add=TRUE)
+## Close the pdf file
+#dev.off() 
+```
+

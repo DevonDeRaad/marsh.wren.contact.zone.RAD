@@ -609,6 +609,19 @@ t.test(x = samps$western.qvalue[samps$western.qvalue &gt; .85],y = eastern.qvalu
 ## sample estimates:
 ## mean of x mean of y 
 ## 0.9697939 0.9947383</code></pre>
+<pre class="r"><code>#also significant with the parental cutoff set to .75
+t.test(x = samps$western.qvalue[samps$western.qvalue &gt; .75],y = eastern.qvalue[eastern.qvalue &gt; .75])</code></pre>
+<pre><code>## 
+##  Welch Two Sample t-test
+## 
+## data:  samps$western.qvalue[samps$western.qvalue &gt; 0.75] and eastern.qvalue[eastern.qvalue &gt; 0.75]
+## t = -3.8122, df = 113.42, p-value = 0.0002244
+## alternative hypothesis: true difference in means is not equal to 0
+## 95 percent confidence interval:
+##  -0.04619086 -0.01459941
+## sample estimates:
+## mean of x mean of y 
+## 0.9603235 0.9907187</code></pre>
 <pre class="r"><code># Open a pdf file
 #pdf(&quot;~/Desktop/marsh.wren.rad/admixture.tail.histograms.pdf&quot;, width=8.5, height=4)
 ##replot

@@ -1,0 +1,186 @@
+---
+title: "investigate.ancestry.song.associations"
+author: "Devon DeRaad"
+date: '2022-10-04'
+output: html_document
+---
+
+### read in data
+```{r, results='hide'}
+#load packages
+library(vcfR)
+library(SNPfiltR)
+library(RColorBrewer)
+library(ggplot2)
+library(StAMPP)
+library(adegenet)
+
+#read in vcf as vcfR
+vcfR <- read.vcfR("~/Desktop/marsh.wren.rad/filtered.vcf.gz")
+
+#read in sample info
+samps<-read.csv("~/Desktop/marsh.wren.rad/samples.with.qvalues.csv")
+#retain samples that were sequenced successfully
+samps<-samps[samps$Tissue.num %in% colnames(vcfR@gt),]
+#reorder sampling file to match order of samples in vcf
+samps<-samps[match(colnames(vcfR@gt)[-1], samps$Tissue.num),]
+samps$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
+
+#read in sample info with vocal info included
+samps.voc<-read.csv("~/Downloads/samps.PCs 2022_08_12.csv")
+#retain samples that were sequenced successfully
+samps.voc<-samps.voc[samps.voc$Tissue.num %in% colnames(vcfR@gt),]
+#reorder sampling file to match order of samples in vcf
+samps.voc<-samps.voc[match(colnames(vcfR@gt)[-1], samps.voc$Tissue.num),]
+samps.voc$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
+#check vocal assignments from the field for the 137 samples that made it through filtering
+table(samps.voc$Song.Type)
+hist(samps.voc$perc.east.buzz)
+#add q value and write out this dataset
+samps.voc$western.qvalue<-samps$western.qvalue
+#write to disk
+#write.csv(x = samps.voc, quote=FALSE, row.names = FALSE, file="~/Desktop/marsh.wren.rad/samples.with.qvalues.plus.song.info.csv")
+```
+
+### investigate ancestry/song association
+### begin by creating sample subsets
+```{r}
+#subset vcf
+vcfR<-vcfR[,c(1:128,134:138)]
+#subset dataframe to only samples with field identified song type
+samps.voc<-samps.voc[samps.voc$Song.Type != "unclear",]
+#remove invariant sites
+vcfR<-min_mac(vcfR, min.mac = 1)
+
+
+#make a PCA colored by song type
+song.type.pca<-assess_missing_data_pca(vcfR,
+                                       popmap = data.frame(id=samps.voc$Tissue.num, pop=samps.voc$Song.Type),
+                                       clustering = FALSE, thresholds=c(0,.95))
+#missing data is not affecting the PCA inference, and it looks like song learning is potentially bidirectional (western songs > introgressing directionally into eastern birds but not vice versa)
+```
+
+### Make PCAs for publication
+```{r}
+song.type.pca<-assess_missing_data_pca(vcfR,
+                                       popmap = data.frame(id=samps.voc$Tissue.num, pop=samps.voc$Song.Type),
+                                       clustering = FALSE)
+
+#flip PC1 so that west is on the left, east on the right
+song.type.pca$PC1<-song.type.pca$PC1*-1
+
+ggplot(song.type.pca, aes(x=PC1, y=PC2, col=pop))+
+  geom_point(cex=4, alpha=.6)+
+  scale_color_manual(values=c('#8C510A','gray', '#01665E'))+
+  theme_classic()+
+  xlab("PC1, 42.55% variance explained")+
+  ylab("PC2, 0.86% variance explained")
+#ggsave("~/Desktop/marsh.wren.rad/song.pca.pdf", width = 6, height=4)
+
+#repeat with only the 85 samples with quantitative data
+#subset vcfR
+sub.vcfR<-vcfR[,c(TRUE,!is.na(samps.voc$perc.east.buzz))]
+sub.vcfR
+sub.vcfR<-min_mac(sub.vcfR, min.mac = 1)
+sub.vcfR
+
+#make PCA
+song.type.pca<-assess_missing_data_pca(sub.vcfR,
+                                       popmap = data.frame(id=samps.voc$Tissue.num[!is.na(samps.voc$perc.east.buzz)], pop=samps.voc$Song.Type[!is.na(samps.voc$perc.east.buzz)]),
+                                       clustering = FALSE)
+
+#add percent east buzz to dataframe
+song.type.pca$perceastbuzz<-samps.voc$perc.east.buzz[!is.na(samps.voc$perc.east.buzz)]
+
+#flip PC1 so that west is on the left, east on the right
+song.type.pca$PC1<-song.type.pca$PC1*-1
+ggplot(song.type.pca, aes(x=PC1, y=PC2, col=perceastbuzz))+
+  geom_point(cex=4, alpha=.6)+
+  scale_colour_gradient(low = "#01665E",high = "#8C510A")+
+  theme_classic()+
+  xlab("PC1, 43.9% variance explained")+
+  ylab("PC2, 1.07% variance explained")
+#ggsave("~/Desktop/marsh.wren.rad/quant.song.pca.pdf", width = 6, height=4)
+```
+
+### perform regressions to test association
+```{r}
+#subset dataframe
+samps.voc.sub<-samps.voc[!is.na(samps.voc$perc.east.buzz),]
+samps.voc.sub$east.qvalue<-1-samps.voc.sub$western.qvalue
+
+#fit linear model
+model <- lm(perc.east.buzz ~ east.qvalue, data = samps.voc.sub)
+
+#assess fit
+summary(model)
+
+#plot
+ggplot(samps.voc.sub, aes(x=east.qvalue, y=perc.east.buzz))+
+  geom_point(cex=4, alpha=.6)+
+  stat_smooth(method="lm")+
+  theme_classic()
+#ggsave("~/Desktop/marsh.wren.rad/ancestry.song.scatter.pdf", width = 5.2, height=4)
+
+#does the pattern hold if you use only samples from the center of the contact zone?
+eb<-samps.voc.sub$perc.east.buzz[samps.voc.sub$Population == "EYEBROW LAKE" | samps.voc.sub$Population == "NICOLLE FLATS" | samps.voc.sub$Population == "CHAPLIN"]
+ea<-samps.voc.sub$east.qvalue[samps.voc.sub$Population == "EYEBROW LAKE" | samps.voc.sub$Population == "NICOLLE FLATS" | samps.voc.sub$Population == "CHAPLIN"]
+
+#make df for plotting
+df<-data.frame(eb=eb,ea=ea)
+
+#plot
+ggplot(df, aes(x=ea, y=eb))+
+  geom_point(cex=4, alpha=.6)+
+  stat_smooth(method="lm")+
+  theme_classic()
+#same pattern in center of contact zone
+```
+
+
+
+
+### make histograms showing the distribution of % songs beginning with an eastern buzz note and q value
+```{r}
+#histograms for all 85 samples with quantified song type
+#get eastern q value
+eastern.qvalue<-1-samps$western.qvalue
+#hist eastern q value for samples with quantified song
+hist(eastern.qvalue[!is.na(samps.voc$perc.east.buzz)])
+#hist buzz %
+hist(samps.voc$perc.east.buzz/100)
+
+#set breakpoints
+ax<-seq(0,1, by= .05)
+
+#plot overlaid histograms colored by parental pop
+plot(hist(samps.voc$perc.east.buzz/100, breaks=ax, plot=FALSE), col=alpha("red", .2))
+plot(hist(eastern.qvalue[!is.na(samps.voc$perc.east.buzz)], breaks=ax, plot=FALSE), col=alpha("blue", .2), add=TRUE)
+
+#do it with ggplot
+df<-data.frame(characteristic=c(rep("perc.east.buzz", times=nrow(samps.voc.sub)), rep("eastern.qvalue", times=nrow(samps.voc.sub))),
+               value=c(samps.voc.sub$perc.east.buzz,samps.voc.sub$east.qvalue*100))
+
+plot_multi_histogram <- function(df, feature, label_column) {
+    plt <- ggplot(df, aes(x=eval(parse(text=feature)), fill=eval(parse(text=label_column)))) +
+    geom_histogram(alpha=0.6, position="identity", color="black") +
+    #geom_density(alpha=0.2) +
+    #geom_vline(aes(xintercept=mean(eval(parse(text=feature)))), color="black", linetype="dashed", size=1) +
+    labs(x="percentage", y = "number of individuals")+
+    theme_classic()
+    plt + guides(fill=guide_legend(title=label_column))
+}
+plot_multi_histogram(df, 'value', 'characteristic')
+#ggsave("~/Desktop/marsh.wren.rad/song.ancestry.hist.pdf", width=6.75, height=4)
+
+### subset to only sites 3-5
+perceastbuzz<-samps.voc$perc.east.buzz[samps.voc$Population == "EYEBROW LAKE" | samps.voc$Population == "NICOLLE FLATS" | samps.voc$Population == "CHAPLIN"]
+east.sub<-eastern.qvalue[samps.voc$Population == "EYEBROW LAKE" | samps.voc$Population == "NICOLLE FLATS" | samps.voc$Population == "CHAPLIN"]
+#how many total samples retianed from hybrid zone core?
+length(east.sub[!is.na(perceastbuzz)])
+
+#plot overlaid histograms colored by parental pop
+plot(hist(east.sub[!is.na(perceastbuzz)], breaks=ax, plot=FALSE), col=alpha("blue", .2))
+plot(hist(perceastbuzz/100, breaks=ax, plot=FALSE), col=alpha("red", .2), add=TRUE)
+```
+

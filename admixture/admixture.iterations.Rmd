@@ -139,7 +139,8 @@ abline(v=mean(samps$western.qvalue[samps$western.qvalue > .85]), col=alpha("#016
 
 #perform T-test with null hypothesis of equal means
 t.test(x = samps$western.qvalue[samps$western.qvalue > .85],y = eastern.qvalue[eastern.qvalue > .85])
-
+#also significant with the parental cutoff set to .75
+t.test(x = samps$western.qvalue[samps$western.qvalue > .75],y = eastern.qvalue[eastern.qvalue > .75])
 # Open a pdf file
 #pdf("~/Desktop/marsh.wren.rad/admixture.tail.histograms.pdf", width=8.5, height=4)
 ##replot

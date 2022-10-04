@@ -123,3 +123,31 @@ barplot(t(as.matrix(runs[[2]])), col=c("#8C510A","#01665E"), ylab="Ancestry", bo
 #dev.off()
 ```
 
+### assess the mean ancestry of "pure parental individuals" for each lineage (i.e., greater than 85% assignment to one of the two ancestry bins)
+```{r}
+#get eastern qvalue
+eastern.qvalue<-1-samps$western.qvalue
+
+#set breakpoints
+ax<-seq(.85,1, by= .015)
+
+#plot overlaid histograms colored by parental pop
+plot(hist(eastern.qvalue[eastern.qvalue > .85], breaks=ax, plot=FALSE), col=alpha("#8C510A", .5))
+plot(hist(samps$western.qvalue[samps$western.qvalue > .85], breaks=ax, plot=FALSE), col=alpha("#01665E", .5), add=TRUE)
+abline(v=mean(eastern.qvalue[eastern.qvalue > .85]), col=alpha("#8C510A"), lwd=3, lty=2)
+abline(v=mean(samps$western.qvalue[samps$western.qvalue > .85]), col=alpha("#01665E"), lwd=3, lty=2)
+
+#perform T-test with null hypothesis of equal means
+t.test(x = samps$western.qvalue[samps$western.qvalue > .85],y = eastern.qvalue[eastern.qvalue > .85])
+
+# Open a pdf file
+#pdf("~/Desktop/marsh.wren.rad/admixture.tail.histograms.pdf", width=8.5, height=4)
+##replot
+#plot(hist(eastern.qvalue[eastern.qvalue > .85], breaks=ax, plot=FALSE), col=alpha("#8C510A", .5))
+#plot(hist(samps$western.qvalue[samps$western.qvalue > .85], breaks=ax, plot=FALSE), col=alpha("#01665E", .5), #add=TRUE)
+#abline(v=mean(eastern.qvalue[eastern.qvalue > .85]), col=alpha("#8C510A"), lwd=3, lty=2)
+#abline(v=mean(samps$western.qvalue[samps$western.qvalue > .85]), col=alpha("#01665E"), lwd=3, lty=2)
+##close
+#dev.off()
+```
+

@@ -1,0 +1,220 @@
+---
+title: "introgress"
+author: "Devon DeRaad"
+date: '2022-10-05'
+output: html_document
+---
+
+### load packages and read in data
+```{r}
+#load packages
+library(introgress)
+library(vcfR)
+library(SNPfiltR)
+library(RColorBrewer)
+library(ggplot2)
+library(StAMPP)
+library(adegenet)
+
+#read in vcf as vcfR
+vcfR <- read.vcfR("~/Desktop/marsh.wren.rad/filtered.vcf.gz")
+
+#read in sample info with vocal info included
+samps.voc<-read.csv("~/Desktop/marsh.wren.rad/samples.with.qvalues.plus.song.info.csv")
+samps.voc$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
+```
+
+### perform introgress analysis
+```{r}
+#introgress analysis
+#create genotype matrix
+mat<-extract.gt(vcfR)
+#convert matrix to numeric values
+conv.mat<-mat
+conv.mat[conv.mat == "0/0"]<-0
+conv.mat[conv.mat == "0/1"]<-1
+conv.mat[conv.mat == "1/1"]<-2
+conv.mat<-as.data.frame(conv.mat)
+#convert class to numeric
+for (i in 1:ncol(conv.mat)){
+  conv.mat[,i]<-as.numeric(as.character(conv.mat[,i]))
+}
+#check sample order
+colnames(conv.mat)
+
+#calc AF for the samples you will use to call fixed differences
+west.af<-(rowSums(conv.mat[,c(128:137)], na.rm=T)/(rowSums(is.na(conv.mat[,c(128:137)]) == FALSE)))/2
+east.af<-(rowSums(conv.mat[,c(1:8,14)], na.rm=T)/(rowSums(is.na(conv.mat[,c(1:8,14)]) == FALSE)))/2
+
+#find fixed SNPs
+diff<-abs(west.af - east.af)
+#how many SNPs are fixed
+table(is.na(diff) == FALSE & diff == 1)
+
+#subsample original matrix to only fixed diff SNPs
+gen.mat<-mat[is.na(diff) == FALSE & diff == 1,]
+dim(gen.mat)
+
+#subsample matrix converted for AF calcs to only fixed SNPS
+conv.mat<-conv.mat[is.na(diff) == FALSE & diff == 1,]
+dim(conv.mat)
+
+#write a logical test to convert alleles so that a single number represents one parental ancestry
+for (i in 1:nrow(gen.mat)){
+  #if 1 is the west allele (ie = 0 frequency in the eastern samples used for identifying informative SNPs)
+  if((sum(conv.mat[i,c(1:8,14)], na.rm=T)/(sum(is.na(conv.mat[i,c(1:8,14)]) == FALSE)))/2 == 0){
+    #swap all '0/0' cells with '2/2'
+    gen.mat[i,][gen.mat[i,] == "0/0"]<-"2/2"
+    #swap all '1/1' cells with '0/0'
+    gen.mat[i,][gen.mat[i,] == "1/1"]<-"0/0"
+    #finally convert all '2/2' cells (originally 0/0) into '1/1'
+    gen.mat[i,][gen.mat[i,] == "2/2"]<-"1/1"
+    #no need to touch hets
+  }
+}
+
+#subset to alleles with < 10 missing genotypes
+#gen.mat<-gen.mat[rowSums(is.na(gen.mat)) < 5,]
+#dim(gen.mat)
+
+#convert R class NAs to the string "NA/NA"
+gen.mat[is.na(gen.mat) == TRUE]<-"NA/NA"
+
+#check out the df
+head(gen.mat)[,c(1:10)]
+
+
+#make locus info df
+locus.info<-data.frame(locus=rownames(gen.mat),
+                       type=rep("C", times=nrow(gen.mat)),
+                       #lg=1:nrow(gen.mat),
+                       #marker.pos=1:nrow(gen.mat))
+                       lg=vcfR@fix[,1][is.na(diff) == FALSE & diff == 1],
+                       marker.pos=vcfR@fix[,2][is.na(diff) == FALSE & diff == 1])
+
+#we now have a gt matrix in proper format for introgress
+#convert genotype data into a matrix of allele counts
+count.matrix<-prepare.data(admix.gen=gen.mat, loci.data=locus.info,
+                           parental1="1",parental2="0", pop.id=F,
+                           ind.id=F, fixed=T)
+
+#estimate hybrid index values
+hi.index.sim<-est.h(introgress.data=count.matrix,loci.data=locus.info,
+                    fixed=T, p1.allele="0", p2.allele="1")
+
+#calculate mean heterozygosity using their function
+het<-calc.intersp.het(introgress.data=count.matrix)
+#faster hand-written code to calculate per sample heterozygosity
+#het<-colSums(count.matrix$Count.matrix == 1, na.rm=TRUE)/colSums(!is.na(count.matrix$Count.matrix))
+#make triangle plot
+introgress::triangle.plot(hi.index=hi.index.sim, int.het=het, pdf = F)
+
+#see how many recent hybrids with different cutoffs
+table(het > .85)
+table(het > .75)
+table(het > .5)
+
+#plot triangle with points colored by call
+ca<-gsub("unclear", "WESTERN", samps.voc$Song.Type)
+ca<-gsub("WESTERN", "blue", ca)
+ca<-gsub("EASTERN", "red", ca)
+ca<-gsub("MIXED", "green", ca)
+
+#plot colored by song type
+plot(x=hi.index.sim$h, y=het, bg=ca,
+     pch=21, cex=1.5,
+     xlab="Hybrid Index", ylab="Interspecific heterozygosity",
+     ylim=c(0,1))
+segments(x0 =0, y0 =0, x1 =.5, y1 =1)
+segments(x0 =1, y0 =0, x1 =.5, y1 =1)
+
+#plot triangle with points colored by sampling locality
+brewer.pal(n=6, "BrBG") #get your palette
+ca<-gsub("LOSTWOODS", "#8C510A", samps.voc$Population)
+ca<-gsub("NICOLLE FLATS", "#D8B365", ca)
+ca<-gsub("EYEBROW LAKE", "#F6E8C3", ca)
+ca<-gsub("CHAPLIN", "#C7EAE5", ca)
+ca<-gsub("CRANE", "#5AB4AC", ca)
+ca<-gsub("NEBRASKA", "#01665E", ca)
+
+#plot colored by sampling locality
+plot(x=hi.index.sim$h, y=het, bg=alpha(ca, .75),
+     pch=21, cex=1.2,
+     xlab="Hybrid Index", ylab="Interspecific heterozygosity",
+     ylim=c(0,1))
+segments(x0 =0, y0 =0, x1 =.5, y1 =1)
+segments(x0 =1, y0 =0, x1 =.5, y1 =1)
+
+#add call info
+va<-gsub("unclear", 22, samps.voc$Song.Type)
+va<-gsub("WESTERN", 21, va)
+va<-gsub("MIXED", 23, va)
+va<-gsub("EASTERN", 24, va)
+va<-as.numeric(va)
+#plot colored by sampling locality
+plot(x=hi.index.sim$h, y=het, bg=alpha(ca, .75),
+     pch=va, cex=1.8,
+     xlab="Hybrid Index", ylab="Interspecific heterozygosity",
+     ylim=c(0,1))
+points(x =c(.5,.5,.25,.75), y=c(1,.5,.5,.5), pch=8)
+segments(x0 =0, y0 =0, x1 =.5, y1 =1)
+segments(x0 =1, y0 =0, x1 =.5, y1 =1)
+
+#save plot
+#pdf("~/Desktop/marsh.wren.rad/triangle.plot.pdf", width = 5.5, height=5)
+##plot colored by sampling locality
+#plot(x=hi.index.sim$h, y=het, bg=alpha(ca, .75),
+#     pch=va, cex=1.8,
+#     xlab="Hybrid Index", ylab="Interspecific heterozygosity",
+#     ylim=c(0,1))
+#points(x =c(.5,.5,.25,.75), y=c(1,.5,.5,.5), pch=8)
+#segments(x0 =0, y0 =0, x1 =.5, y1 =1)
+#segments(x0 =1, y0 =0, x1 =.5, y1 =1)
+#dev.off()
+```
+
+### make genotype plot
+```{r}
+#make genotype plot
+mk.image(introgress.data=count.matrix, loci.data=locus.info,
+         hi.index=hi.index.sim, ylab.image="Individuals",
+         xlab.h="population 2 ancestry", pdf=F,
+         col.image=c(rgb(0,0,1,alpha=.5),rgb(0,0,0,alpha=.8),rgb(1,0,0,alpha=.5)))
+
+#make genotype plot colored by lineage
+mk.image(introgress.data=count.matrix, loci.data=locus.info,
+         hi.index=hi.index.sim, ylab.image="Individuals",
+         xlab.h="population 2 ancestry", pdf=F,
+         col.image=c("#01665E","black","#8C510A"))
+
+#save plot
+#pdf("~/Desktop/marsh.wren.rad/genotype.plot.pdf", width = 9, height = 3.5)
+#mk.image(introgress.data=count.matrix, loci.data=locus.info,
+#         hi.index=hi.index.sim, ylab.image="Individuals",
+#         xlab.h="population 2 ancestry", pdf=F,
+#         col.image=c("#01665E","black","#8C510A"))
+#dev.off()
+```
+
+
+### make t-SNE plot using only these fixed differences
+```{r}
+#get number of unique loci
+length(unique(gsub("_.*", "", rownames(conv.mat))))
+#subset vcfR object to include only fixed differences
+vcfR.sub<-vcfR[paste0(vcfR@fix[,1],"_",vcfR@fix[,2]) %in% rownames(conv.mat),]
+#make tsne plot
+fixed.pca<-assess_missing_data_tsne(vcfR.sub, popmap = data.frame(id=samps.voc$Tissue.num, pop=samps.voc$Population),
+                                       clustering = TRUE)
+#flip PC1 so that west is on the left, east on the right
+fixed.pca$tsne.ax1<-fixed.pca$tsne.ax1*-1
+
+ggplot(fixed.pca, aes(x=tsne.ax1, y=tsne.ax2, col=popmap.pop))+
+  geom_point(cex=4, alpha=.8)+
+  scale_color_manual(values=brewer.pal(n=6, "BrBG")[c(4,5,3,1,6,2)])+
+  theme_classic()+
+  xlab("t-SNE axis 1")+
+  ylab("t-SNE axis 2")
+#ggsave("~/Desktop/marsh.wren.rad/tsne.fixed.diffs.pdf", width =6, height=4)
+```
+

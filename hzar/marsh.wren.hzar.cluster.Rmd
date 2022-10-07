@@ -1,0 +1,219 @@
+---
+title: "hzar marsh wrens"
+author: "Devon DeRaad"
+date: '2022-10-06'
+output: html_document
+---
+
+```{r}
+#load package
+library(hzar)
+
+#read in sample info with vocal info included
+samps.voc<-read.csv("samples.with.qvalues.plus.song.info.csv")
+#make eastern q
+samps.voc$eastern.qvalue<-1-samps.voc$western.qvalue
+samps.voc$pops<-as.factor(samps.voc$pops)
+
+#make a separate dataframe with geographic distance, and the mean of each input value for each sampling locality
+locs<-data.frame(site.id=c(1:6),
+                 dist=c(0,100,278,313,365,582),
+                 eastern.qvalue=aggregate(samps.voc$eastern.qvalue~samps.voc$pops, FUN=mean)[,2],
+                 eastern.buzz=aggregate(samps.voc$perc.east.buzz~samps.voc$pops, FUN=mean)[,2])
+
+# set Chain length
+chainLength=1e6                     
+```
+
+### this chunk defines 3 helper functions that will (1) run 3 separate hzar models, (2) check for convergence, and (3) process the cline output to make it easily plot-able
+```{r}
+### function 1:
+#write function to run 3 different hzar models and store the output in a single list
+run3hzarmodels<-function(input.trait=NULL, begin=NULL,end=NULL){
+  ## create empty object to hold results
+  x <- list() #designate the firs trait 'Comp.1'
+  x$models <- list() #Space to hold the models to fit
+  x$fitRs <- list() #Space to hold the compiled fit requests
+  x$runs <- list() #Space to hold the output data chains
+  x$analysis <- list() #Space to hold the analysed data
+  
+  #add input observed data to list
+  x$obs<-input.trait
+  
+  #load the three different models we will test
+  #min and max values fixed to observed data, no exponential tails
+  x$models[["modelI"]]<-hzar.makeCline1DFreq(x$obs, "fixed", "none")
+  #min and max values estimated as free parameters, no exponential tails
+  x$models[["modelII"]]<-hzar.makeCline1DFreq(x$obs, "free", "none")
+  #min and max values estimated as free paramaters, tails estimated as independent paramaters
+  x$models[["modelIII"]]<-hzar.makeCline1DFreq(x$obs, "free", "both")
+
+  #modify all models to focus on observed region 
+  x$models <- sapply(x$models, hzar.model.addBoxReq, begin, end, simplify=FALSE)
+  
+  ## Compile each of the models to prepare for fitting
+  #fit each of the 3 models we set up to the observed data
+  x$fitRs$init <- sapply(x$models, hzar.first.fitRequest.old.ML, obsData=x$obs, verbose=FALSE, simplify=FALSE)
+  
+  #update settings for the fitter using chainLength created before
+  x$fitRs$init$modelI$mcmcParam$chainLength <- chainLength
+  x$fitRs$init$modelI$mcmcParam$burnin <- chainLength %/% 10
+  x$fitRs$init$modelII$mcmcParam$chainLength <- chainLength
+  x$fitRs$init$modelII$mcmcParam$burnin <- chainLength %/% 10
+  x$fitRs$init$modelIII$mcmcParam$chainLength <- chainLength
+  x$fitRs$init$modelIII$mcmcParam$burnin <- chainLength %/% 10
+
+  ## Run just one of the models for an initial chain
+  x$runs$init$modelI <-hzar.doFit(x$fitRs$init$modelI)
+  ## Run another model for an initial chain
+  x$runs$init$modelII <- hzar.doFit(x$fitRs$init$modelII)
+  ## Run another model for an initial chain
+  x$runs$init$modelIII <- hzar.doFit(x$fitRs$init$modelIII)
+
+  ## Compile a new set of fit requests using the initial chains 
+  x$fitRs$chains <-lapply(x$runs$init,hzar.next.fitRequest)
+  
+  ## Replicate each fit request 3 times
+  x$fitRs$chains <-hzar.multiFitRequest(x$fitRs$chains,each=3)
+
+  ##Run a chain of 3 runs for every fit request
+  x$runs$chains <-hzar.doChain.multi(x$fitRs$chains,doPar=TRUE,inOrder=FALSE,count=3)
+  
+  return(x)
+}
+
+### function 2:
+#function to check MCMC convergence
+check.convergence<-function(input.hzar=NULL){
+  ## Check for convergence
+  print("did chains from modelI converge?")
+  plot(hzar.mcmc.bindLL(input.hzar$runs$init$modelIII))  ## Plot the trace model I
+  print("did chains from modelII converge?")
+  plot(hzar.mcmc.bindLL(input.hzar$runs$init$modelIII))  ## Plot the trace model II
+  print("did chains from modelIII converge?")
+  plot(hzar.mcmc.bindLL(input.hzar$runs$init$modelIII))  ## Plot the trace model III
+}
+
+### function 3:
+#write function to do the processing necessary before plotting the resulting cline
+analyze.hzar.output<-function(input.hzar=NULL, input.var=NULL){
+  #add a null model where allele frequency is independent of sampling locality
+  input.hzar$analysis$initDGs <- list(nullModel =  hzar.dataGroup.null(input.hzar$obs))
+
+  #start aggregation of data for analysis
+  #create a model data group for each model from the initial runs
+  input.hzar$analysis$initDGs$modelI<- hzar.dataGroup.add(input.hzar$runs$init$modelI)
+  input.hzar$analysis$initDGs$modelII <-hzar.dataGroup.add(input.hzar$runs$init$modelII)
+  input.hzar$analysis$initDGs$modelIII<- hzar.dataGroup.add(input.hzar$runs$init$modelIII)
+  
+  ##create a hzar.obsDataGroup object from the four hzar.dataGroup just created, copying the naming scheme
+  input.hzar$analysis$oDG<-hzar.make.obsDataGroup(input.hzar$analysis$initDGs)
+  input.hzar$analysis$oDG <- hzar.copyModelLabels(input.hzar$analysis$initDGs,input.hzar$analysis$oDG)
+  
+  ##convert all runs to hzar.dataGroup objects
+  input.hzar$analysis$oDG <-hzar.make.obsDataGroup(input.hzar$analysis$initDGs)
+  input.hzar$analysis$oDG <-hzar.copyModelLabels(input.hzar$analysis$initDGs,input.hzar$analysis$oDG)
+  input.hzar$analysis$oDG <-hzar.make.obsDataGroup(lapply(input.hzar$runs$chains,hzar.dataGroup.add),input.hzar$analysis$oDG)
+  #this no longer works
+  #input.hzar$analysis$oDG <- hzar.make.obsDataGroup(lapply(input.hzar$runs$doSeq,   hzar.dataGroup.add),input.hzar$analysis$oDG)
+  
+  #compare the 5 cline models graphically
+  print("output clines from each model overlaid")
+  hzar.plot.cline(input.hzar$analysis$oDG)
+  
+  #model selection based on AICc scores
+  print("AICc table")
+  print(input.hzar$analysis$AICcTable<- hzar.AICc.hzar.obsDataGroup(input.hzar$analysis$oDG))
+  
+  #Extract the hzar.dataGroup object for the selected model
+  print("best model based on AICc")
+  print(input.hzar$analysis$model.name<-   rownames(input.hzar$analysis$AICcTable)[[which.min(input.hzar$analysis$AICcTable$AICc)]])
+  input.hzar$analysis$model.selected<- input.hzar$analysis$oDG$data.groups[[input.hzar$analysis$model.name]]
+  
+  #print the point estimates for cline width and center for the selected model
+  input.hzar$analysis$modeldetails <- hzar.get.ML.cline(input.hzar$analysis$model.selected)
+  input.hzar$analysis$modeldetails$param.all$width
+  input.hzar$analysis$modeldetails$param.all$center
+  
+  #Print the 2LL confidence intervals for each parameter under the best model
+  print("2LL confidence intervals for all estimated parameters")
+  print(hzar.getLLCutParam(input.hzar$analysis$model.selected,   names(input.hzar$analysis$model.selected$data.param)))
+  
+  #plot the maximum likelihood cline for the selected model
+  print("maximum likelihood cline")
+  hzar.plot.cline(input.hzar$analysis$model.selected,pch=19,xlab="Distance (km)",ylab=input.var)
+  
+  #plot the 95% credible cline region for the selected model
+  print("95% credible cline region for the optimal model")
+  hzar.plot.fzCline(input.hzar$analysis$model.selected,pch=19,xlab="Distance (km)",ylab=input.var)
+  return(input.hzar)
+}
+```
+
+### Now we will use these helper functions to make a cline for ancestry proportion
+```{r, results='hide'}
+#get sample sizes
+table(samps.voc$pops)
+## Set up first input trait (ancestry proportion)
+eastern.ancestry.input <- hzar.doMolecularData1DPops(distance=locs$dist,
+                                             pObs=locs$eastern.qvalue,
+                                             nEff=as.vector(table(samps.voc$pops)))
+
+#run 3 models
+eastern.ancestry<-run3hzarmodels(input.trait=eastern.ancestry.input, begin=0, end=582)
+```
+
+```{r, fig.height=10, fig.width=6, fig.align = "center"}
+#check convergence
+check.convergence(eastern.ancestry)
+```
+
+```{r}
+#run analysis function on genome wide ancestry input
+ancestry.plot<-analyze.hzar.output(eastern.ancestry, input.var = "eastern ancestry proportion")
+```
+
+
+### Now we will make a cline for song proportion
+```{r, results='hide'}
+## Set up first input trait (ancestry proportion)
+eastern.buzz.input <- hzar.doMolecularData1DPops(distance=locs$dist,
+                                             pObs=locs$eastern.buzz,
+                                             nEff=as.vector(table(samps.voc$pops)))
+
+#run 3 models
+eastern.buzz<-run3hzarmodels(input.trait=eastern.buzz.input, begin=0,end=582)
+```
+
+```{r, fig.height=10, fig.width=6, fig.align = "center"}
+#check convergence
+check.convergence(eastern.buzz)
+```
+
+```{r}
+#run analysis function on genome wide ancestry input
+buzz.plot<-analyze.hzar.output(eastern.buzz, input.var = 'eastern "buzz" proportion')
+```
+
+### check outputes
+```{r}
+#which model was best for each variable?
+#ancestry
+ancestry.plot[["analysis"]][["AICcTable"]]
+#buzz
+buzz.plot[["analysis"]][["AICcTable"]]
+
+#plot
+#plot the clines overlaid
+hzar.plot.cline(ancestry.plot$analysis$model.selected,pch=24,xlab="Distance (km)")
+hzar.plot.cline(buzz.plot$analysis$model.selected,pch=24,xlab="Distance (km)",add=TRUE,col="gray")
+
+#save
+pdf("hzar.overlaid.clines.pdf", width = 8, height = 6) #open PDF
+#plot the clines overlaid
+hzar.plot.cline(ancestry.plot$analysis$model.selected,pch=21,xlab="Distance (km)")
+hzar.plot.cline(buzz.plot$analysis$model.selected,pch=21,xlab="Distance (km)",add=TRUE,col="gray")
+dev.off() #close PDF
+```
+
+

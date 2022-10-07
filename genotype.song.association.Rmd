@@ -27,17 +27,17 @@ samps<-samps[match(colnames(vcfR@gt)[-1], samps$Tissue.num),]
 samps$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
 
 #read in sample info with vocal info included
-samps.voc<-read.csv("~/Downloads/samps.PCs 2022_08_12.csv")
-#retain samples that were sequenced successfully
-samps.voc<-samps.voc[samps.voc$Tissue.num %in% colnames(vcfR@gt),]
-#reorder sampling file to match order of samples in vcf
-samps.voc<-samps.voc[match(colnames(vcfR@gt)[-1], samps.voc$Tissue.num),]
-samps.voc$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
-#check vocal assignments from the field for the 137 samples that made it through filtering
+samps.voc<-read.csv("~/Desktop/marsh.wren.rad/samples.with.qvalues.plus.song.info.csv")
+##retain samples that were sequenced successfully
+#samps.voc<-samps.voc[samps.voc$Tissue.num %in% colnames(vcfR@gt),]
+##reorder sampling file to match order of samples in vcf
+#samps.voc<-samps.voc[match(colnames(vcfR@gt)[-1], samps.voc$Tissue.num),]
+#samps.voc$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
+##check vocal assignments from the field for the 137 samples that made it through filtering
 table(samps.voc$Song.Type)
 hist(samps.voc$perc.east.buzz)
 #add q value and write out this dataset
-samps.voc$western.qvalue<-samps$western.qvalue
+#samps.voc$western.qvalue<-samps$western.qvalue
 #write to disk
 #write.csv(x = samps.voc, quote=FALSE, row.names = FALSE, file="~/Desktop/marsh.wren.rad/samples.with.qvalues.plus.song.info.csv")
 ```
@@ -77,7 +77,7 @@ ggplot(song.type.pca, aes(x=PC1, y=PC2, col=pop))+
   ylab("PC2, 0.86% variance explained")
 #ggsave("~/Desktop/marsh.wren.rad/song.pca.pdf", width = 6, height=4)
 
-#repeat with only the 85 samples with quantitative data
+#repeat with only the 90 samples with quantitative data
 #subset vcfR
 sub.vcfR<-vcfR[,c(TRUE,!is.na(samps.voc$perc.east.buzz))]
 sub.vcfR
@@ -98,8 +98,8 @@ ggplot(song.type.pca, aes(x=PC1, y=PC2, col=perceastbuzz))+
   geom_point(cex=4, alpha=.6)+
   scale_colour_gradient(low = "#01665E",high = "#8C510A")+
   theme_classic()+
-  xlab("PC1, 43.9% variance explained")+
-  ylab("PC2, 1.07% variance explained")
+  xlab("PC1, 45.1% variance explained")+
+  ylab("PC2, 1.02% variance explained")
 #ggsave("~/Desktop/marsh.wren.rad/quant.song.pca.pdf", width = 6, height=4)
 ```
 
@@ -144,22 +144,22 @@ ggplot(df, aes(x=ea, y=eb))+
 ```{r}
 #histograms for all 85 samples with quantified song type
 #get eastern q value
-eastern.qvalue<-1-samps$western.qvalue
+eastern.qvalue<-1-samps.voc$western.qvalue
 #hist eastern q value for samples with quantified song
 hist(eastern.qvalue[!is.na(samps.voc$perc.east.buzz)])
 #hist buzz %
-hist(samps.voc$perc.east.buzz/100)
+hist(samps.voc$perc.east.buzz)
 
 #set breakpoints
 ax<-seq(0,1, by= .05)
 
 #plot overlaid histograms colored by parental pop
-plot(hist(samps.voc$perc.east.buzz/100, breaks=ax, plot=FALSE), col=alpha("red", .2))
+plot(hist(samps.voc$perc.east.buzz, breaks=ax, plot=FALSE), col=alpha("red", .2))
 plot(hist(eastern.qvalue[!is.na(samps.voc$perc.east.buzz)], breaks=ax, plot=FALSE), col=alpha("blue", .2), add=TRUE)
 
 #do it with ggplot
 df<-data.frame(characteristic=c(rep("perc.east.buzz", times=nrow(samps.voc.sub)), rep("eastern.qvalue", times=nrow(samps.voc.sub))),
-               value=c(samps.voc.sub$perc.east.buzz,samps.voc.sub$east.qvalue*100))
+               value=c(samps.voc.sub$perc.east.buzz,samps.voc.sub$east.qvalue))
 
 plot_multi_histogram <- function(df, feature, label_column) {
     plt <- ggplot(df, aes(x=eval(parse(text=feature)), fill=eval(parse(text=label_column)))) +

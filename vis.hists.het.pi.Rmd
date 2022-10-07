@@ -1,0 +1,190 @@
+---
+title: "make ancestry histograms and plot diversity"
+author: "Devon DeRaad"
+date: '2022-10-04'
+output: html_document
+---
+
+```{r}
+#load packages
+library(vcfR)
+library(SNPfiltR)
+library(RColorBrewer)
+library(ggplot2)
+library(StAMPP)
+library(adegenet)
+library(ggmulti)
+library(gridExtra)
+
+#read in vcf as vcfR
+vcfR <- read.vcfR("~/Desktop/marsh.wren.rad/filtered.vcf.gz")
+
+#read in sample info
+samps<-read.csv("~/Desktop/marsh.wren.rad/samples.with.qvalues.csv")
+#retain samples that were sequenced successfully
+samps<-samps[samps$Tissue.num %in% colnames(vcfR@gt),]
+#reorder sampling file to match order of samples in vcf
+samps<-samps[match(colnames(vcfR@gt)[-1], samps$Tissue.num),]
+samps$Tissue.num == colnames(vcfR@gt)[-1] #check that order matches
+
+#read in sample info with vocal info included
+samps.voc<-read.csv("~/Desktop/marsh.wren.rad/samples.with.qvalues.plus.song.info.csv")
+#specify that the 5 nebraska samples with song data have no eastern buzz
+#samps.voc$perc.east.buzz[133:137]<-0
+#write.csv(samps.voc, "~/Desktop/marsh.wren.rad/samples.with.qvalues.plus.song.info.csv", row.names = F, quote = F)
+```
+
+```{r}
+#plot histograms of qvalue (ancestry proportion) to see underlying variance at each site
+ggplot(samps.voc, aes(x = western.qvalue)) +
+  geom_histogram(fill = "white", colour = "black") +
+  facet_grid(Population ~ .)+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+#use pop assignments instead of names
+#pops<-gsub("NEBRASKA", 1, samps.voc$Population)
+#pops<-gsub("CRANE", 2, pops)
+#pops<-gsub("CHAPLIN", 3, pops)
+#pops<-gsub("EYEBROW LAKE", 4, pops)
+#pops<-gsub("NICOLLE FLATS", 5, pops)
+#pops<-gsub("LOSTWOODS", 6, pops)
+#samps.voc$pops<-pops
+
+#make eastern q
+samps.voc$eastern.qvalue<-1-samps.voc$western.qvalue
+samps.voc$pops<-as.factor(samps.voc$pops)
+
+#plot
+ggplot(samps.voc, aes(x = western.qvalue)) +
+  geom_histogram(fill = "white", colour = "black") +
+  facet_grid(pops ~ .)+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+#plot percent eastern buzz
+ggplot(samps.voc, aes(x = perc.east.buzz)) +
+  geom_histogram(fill = "white", colour = "black") +
+  facet_grid(. ~ pops)+
+  theme_classic()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line.y = element_blank())+
+  coord_flip()
+
+ggplot(samps.voc, aes(x = perc.east.buzz)) +
+  geom_histogram(fill = "white", colour = "black") +
+  facet_grid(. ~ pops)+
+  theme_classic()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),rect = element_blank())+
+  coord_flip()
+```
+
+```{r}
+#make violin plots
+ggplot(samps.voc, aes(x=pops, y=western.qvalue, fill=pops))+ 
+  geom_violin()+
+  geom_jitter(position=position_jitter(0.1))+
+  ylim(c(0,1))+
+  theme_classic()
+
+ggplot(samps.voc, aes(x=pops, y=western.qvalue))+ 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=.3)+
+  ylim(c(0,1))+
+  theme_classic()
+
+#use geom_histogram_() function from package 'ggmulti'
+ggplot(samps.voc, mapping = aes(x = pops, y = eastern.qvalue, fill=pops)) +
+  scale_fill_brewer(palette = "BrBG", direction = -1)+
+  geom_histogram_(as.mix = TRUE, prop = 2.3, color="black")+
+  theme_classic()
+
+ggplot(samps.voc, mapping = aes(x = pops, y = perc.east.buzz, fill=pops)) +
+  scale_fill_brewer(palette = "BrBG", direction = -1)+
+  geom_histogram_(as.mix = TRUE, prop = 1.6, color="black")+
+  theme_classic()
+
+#save
+qval<-ggplot(samps.voc, mapping = aes(x = pops, y = eastern.qvalue, fill=pops)) +
+  scale_fill_brewer(palette = "BrBG", direction = -1)+
+  geom_histogram_(as.mix = TRUE, prop = 2.3, color="black", bins =15)+
+  theme_classic()+
+  ylab("eastern ancestry proportion")+
+  theme(legend.position = "none")
+
+eb<-ggplot(samps.voc, mapping = aes(x = pops, y = perc.east.buzz, fill=pops)) +
+  scale_fill_brewer(palette = "BrBG", direction = -1)+
+  geom_histogram_(as.mix = TRUE, prop = 1.6, color="black", bins = 15)+
+  theme_classic()+
+  ylab("eastern 'buzz' proportion")+
+  theme(legend.position = "none")
+
+figure <- grid.arrange(qval, eb,
+                    ncol = 1, nrow = 2)
+#ggsave("~/Desktop/marsh.wren.rad/hists.by.site.pdf",figure,width=8.5,height=4.5)
+```
+
+### calculate pi and heterozygosity
+```{r}
+#make popmaps
+#samps.voc<-read.csv("~/Desktop/marsh.wren.rad/samples.with.qvalues.plus.song.info.csv")
+#write.table(samps.voc[,c(1,19)], "~/Desktop/marsh.wren.rad/pops.popmap.txt", sep = "\t", quote = F, row.names = F, col.names = F)
+#write.table(samps.voc[,c(1,1)], "~/Desktop/marsh.wren.rad/samps.popmap.txt", sep = "\t", quote = F, row.names = F, col.names = F)
+
+#run this in bash, where pops.popmap.txt assigns samples to species, to get species level pi estimates
+#and samps.popmap.txt assigns each sample as a unique population to get per individual heterozygosity estimates
+# Run populations and export population info
+#/home/d669d153/work/stacks-2.41/populations -P ./stacks_n4 -M pops.popmap.txt --fstats -O ./pops
+# Run populations and export population info
+#/home/d669d153/work/stacks-2.41/populations -P ./stacks_n4 -M samps.popmap.txt -O ./single.sample
+
+#read in each output file
+#pops
+#pi.pops<-read.table("~/Desktop/marsh.wren.rad/pi.het.info/fixed.pops/populations.sumstats_summary.tsv", header=T, sep='\t')
+#per sample
+pi.sample<-read.table("~/Desktop/marsh.wren.rad/pi.het.info/single.sample/populations.sumstats_summary.tsv", header=T, sep='\t')
+#check that ordering stayed the same
+pi.sample$Pop.ID == samps.voc$Tissue.num
+
+pi.vec<-gsub("1","0.00111", samps.voc$pops)
+pi.vec<-gsub("2","0.0018", pi.vec)
+pi.vec<-gsub("3","0.0027", pi.vec)
+pi.vec<-gsub("4","0.00241", pi.vec)
+pi.vec<-gsub("5","0.00231", pi.vec)
+pi.vec<-gsub("6","0.00195", pi.vec)
+#make plotting df
+plotting.df<-data.frame(sample=pi.sample$Pop.ID,
+                        population=as.factor(samps.voc$pops),
+                        het=pi.sample$Obs_Het,
+                        pi=pi.vec)
+plotting.df$pi<-as.numeric(plotting.df$pi)
+
+#plot heterozygosity violin plots
+ggplot(plotting.df, aes(x=population, y=het))+ 
+  #geom_violin(trim = FALSE)+
+  geom_dotplot(binaxis='y', stackdir='center', dotsize = 1, alpha=.8, aes(fill=population,color=population))+
+  theme_classic()+
+  scale_fill_brewer(palette = "BrBG", direction = -1)+
+  scale_color_brewer(palette = "BrBG", direction = -1)+
+  theme(legend.position = "none")+
+  geom_point(aes(y=pi), pch=8, cex=3)+
+  labs(x="",y="heterozygosity/Pi")
+  #scale_y_continuous(sec.axis = sec_axis(trans = (~.*1), name="Pi"))
+
+#plot
+het<-ggplot(plotting.df, aes(x=population, y=het)) + 
+  #geom_violin(trim = FALSE)+
+  geom_dotplot(binaxis='y', stackdir='center', dotsize = 2, alpha=.8, aes(fill=population,color=population))+
+  theme_classic()+
+  scale_fill_brewer(palette = "BrBG", direction = -1)+
+  scale_color_brewer(palette = "BrBG", direction = -1)+
+  theme(legend.position = "none")+
+  geom_point(aes(y=pi), pch=8, cex=3)+
+  labs(x="",y="heterozygosity / Pi")
+  
+grid.arrange(qval, eb, het,
+                    ncol = 1, nrow = 3)
+#save
+figure <- grid.arrange(qval, eb, het,
+                    ncol = 1, nrow = 3)
+#ggsave("~/Desktop/marsh.wren.rad/hists.by.site.plus.het.pdf",figure,width=9,height=6)
+```
+

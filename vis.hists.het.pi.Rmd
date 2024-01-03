@@ -15,6 +15,7 @@ library(StAMPP)
 library(adegenet)
 library(ggmulti)
 library(gridExtra)
+library(diptest)
 
 #read in vcf as vcfR
 vcfR <- read.vcfR("~/Desktop/marsh.wren.rad/filtered.vcf.gz")
@@ -120,6 +121,22 @@ eb<-ggplot(samps.voc, mapping = aes(x = pops, y = perc.east.buzz, fill=pops)) +
 figure <- grid.arrange(qval, eb,
                     ncol = 1, nrow = 2)
 #ggsave("~/Desktop/marsh.wren.rad/hists.by.site.pdf",figure,width=8.5,height=4.5)
+
+### Test for unimodality at each site
+#buzz %
+dip.test(samps.voc$perc.east.buzz[samps.voc$pops ==1 & is.na(samps.voc$perc.east.buzz) == FALSE])
+dip.test(samps.voc$perc.east.buzz[samps.voc$pops ==2 & is.na(samps.voc$perc.east.buzz) == FALSE])
+dip.test(samps.voc$perc.east.buzz[samps.voc$pops ==3 & is.na(samps.voc$perc.east.buzz) == FALSE])
+dip.test(samps.voc$perc.east.buzz[samps.voc$pops ==4 & is.na(samps.voc$perc.east.buzz) == FALSE])
+dip.test(samps.voc$perc.east.buzz[samps.voc$pops ==5 & is.na(samps.voc$perc.east.buzz) == FALSE])
+dip.test(samps.voc$perc.east.buzz[samps.voc$pops ==6 & is.na(samps.voc$perc.east.buzz) == FALSE])
+#q-value
+dip.test(samps.voc$eastern.qvalue[samps.voc$pops ==1 & is.na(samps.voc$eastern.qvalue) == FALSE])
+dip.test(samps.voc$eastern.qvalue[samps.voc$pops ==2 & is.na(samps.voc$eastern.qvalue) == FALSE])
+dip.test(samps.voc$eastern.qvalue[samps.voc$pops ==3 & is.na(samps.voc$eastern.qvalue) == FALSE])
+dip.test(samps.voc$eastern.qvalue[samps.voc$pops ==4 & is.na(samps.voc$eastern.qvalue) == FALSE])
+dip.test(samps.voc$eastern.qvalue[samps.voc$pops ==5 & is.na(samps.voc$eastern.qvalue) == FALSE])
+dip.test(samps.voc$eastern.qvalue[samps.voc$pops ==6 & is.na(samps.voc$eastern.qvalue) == FALSE])
 ```
 
 ### calculate pi and heterozygosity

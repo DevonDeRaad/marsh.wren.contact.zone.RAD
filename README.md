@@ -1,6 +1,8 @@
 Repository for analysis of RADseq data from a transect of male Marsh Wrens
 ==================================================================================
 
+*   Code for creating range maps using the Ebirdst package available [here](https://devonderaad.github.io/marsh.wren.contact.zone.RAD/ebirdst.range.maps.html)
+
 *   Find the lab protocols used to generate genomic data [here](https://github.com/DevonDeRaad/marsh.wren.contact.zone.RAD/tree/master/lab.protocols)
     
 *   See the quality control process using the R package [fastqcR](https://github.com/kassambara/fastqcr) [here](https://devonderaad.github.io/marsh.wren.contact.zone.RAD/qc/qc.html)

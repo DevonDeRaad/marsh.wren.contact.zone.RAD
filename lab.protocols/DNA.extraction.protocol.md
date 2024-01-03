@@ -1,0 +1,17 @@
+# High Molecular Weight DNA extraction protocol used on Marsh Wren blood samples
+- start with 6 ml of extraction buffer (10 ml of 1M Tris, pH8; 20 ml of 5M NaCl; 200 ml of 0.5M EDTA, pH8), chilled on ice.
+- Add up to 70 ul of whole blood and mix.
+- Add 200 ul 20% SDS and mix.
+- Add 160 ul of Proteinase K (10mg/ml), mix, and incubate overnight at 55 C.
+- Add 160 ul of 5M NaCL and 80 ul of RNase (10 mg/ml), mix, and incubate at room temperature for 1 hour.
+- Add 10 ml Phenol:Chloroform:Isoamyl Alcohol (25:24:1).  Incubate at 55 C for 20 minutes, shaking every 5 minutes.
+- Centrifuge at 3500 RPM for 10 minutes.
+- Remove aqueous layer to a new tube containing 10 ml Chloroform:Isoamyl Alcohol (24:1).  Incubate at 55 C for 20 minutes, shaking every 5 minutes.
+- Centrifuge at 3500 RPM for 10 minutes.
+- Remove aqueous layer to a new tube containing 10 ml Chloroform:Isoamyl Alcohol (24:1).  Incubate at 55 C for 20 minutes, shaking every 5 minutes.
+- Centrifuge at 3500 RPM for 5 minutes.
+- Chill a glass beaker on ice.  Add aqueous layer to the beaker, then slowly add 2 volumes of ice cold 95% ethanol. 
+- Spool DNA on a hooked glass rod by slowly stirring for several minutes.
+- Rinse spooled DNA with 70% ethanol and squeeze out any excess ethanol by squeezing with Parafilm.
+- Break rod into 2 ml of TLE (TE but with 1/10th the amount of EDTA) and incubate overnight at 35 C with gentle agitation.
+- Determine DNA concentration and purity with spectrophotometer.  Re-extract if needed.

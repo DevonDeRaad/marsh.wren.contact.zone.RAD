@@ -1,5 +1,7 @@
-Repository for analysis of RADseq data from a transect of male Marsh Wrens
+Repository for analysis of RADseq data from the manuscript "Genetic analysis of Marsh Wrens across a broad transition zone in southern Saskatchewan reveals deep divergence and little hybridization between two cultural phenotypes"
 ==================================================================================
+
+[![DOI](https://zenodo.org/badge/543179563.svg)](https://doi.org/10.5281/zenodo.17179806)
 
 *   Code for creating range maps using the Ebirdst package available [here](https://devonderaad.github.io/marsh.wren.contact.zone.RAD/ebirdst.range.maps.html)
 
